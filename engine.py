@@ -6,11 +6,16 @@ import random
 import math
 from datetime import datetime
 
+import torch
+
 import network
 import settings as cfg
 from terrain_data import MapTemplates
 from rules_manager import BUILDING_RULES, ADJACENT_MODIFIERS
 import map as map_ai
+
+from terrapolis_logic import TerrapolisGame
+from terrapolis_models import CityCNN
 
 BUILDING_TO_ID = {
     "quarry": 5,
@@ -111,6 +116,38 @@ class Game:
         if os.path.exists("action.txt"):
             try: os.remove("action.txt")
             except: pass
+        
+        print("Chargement du modèle Deep Learning...")
+        self.ai_model = None
+        self.ai_device = torch.device("cpu") 
+        
+        model_path = os.path.join("save_terrapolis_models", "model_best.pt")
+        
+        # --- PYTORCH 2.6 SECURITY FIX ---
+        # We whitelist the classes needed to load the model securely
+        torch.serialization.add_safe_globals([CityCNN, torch.nn.Conv2d, torch.nn.Linear, torch.nn.Dropout, torch.nn.ReLU])
+
+        if os.path.exists(model_path):
+            try:
+                # Try secure load first
+                self.ai_model = torch.load(model_path, map_location=self.ai_device, weights_only=True)
+                print("✅ IA Intelligente chargée (Secure Mode)")
+            except:
+                try:
+                    # Fallback to unsafe load if secure fails (local trusted file)
+                    self.ai_model = torch.load(model_path, map_location=self.ai_device, weights_only=False)
+                    print("⚠️ IA Intelligente chargée (Unsafe Mode)")
+                    
+                    # Fix for older models missing dropout layer
+                    if not hasattr(self.ai_model, 'dropout'):
+                        self.ai_model.dropout = torch.nn.Dropout(p=0.3)
+                except Exception as e:
+                    print(f"❌ Erreur critique chargement IA : {e}")
+            
+            if self.ai_model:
+                self.ai_model.eval()
+        else:
+            print(f"⚠️ Modèle introuvable à : {model_path}")
 
     # --- INITIALISATION ET RESET ---
 
@@ -163,6 +200,25 @@ class Game:
         game_map[MapTemplates.mountain == 1] = "mountain"
         game_map[MapTemplates.river == 1] = "river"
         return game_map
+    
+    def _get_ar_map_string(self):
+        """
+        Génère une chaîne CSV représentant la structure statique de la carte
+        spécifiquement pour le script Unity UDP_generationMap.cs.
+        Codes: 1=Plaine, 2=Montagne, 3=Forêt, 4=Rivière
+        """
+        # On utilise les dimensions définies dans settings
+        combined = np.zeros((cfg.MAP_HEIGHT, cfg.MAP_WIDTH), dtype=int)
+        
+        # Fusion des couches selon votre logique de priorité
+        # Note : On utilise MapTemplates importé de terrain_data
+        combined[MapTemplates.plain == 1] = 1
+        combined[MapTemplates.forest == 1] = 3
+        combined[MapTemplates.mountain == 1] = 2
+        combined[MapTemplates.river == 1] = 4
+        
+        # Aplatir la matrice et convertir en chaîne "1,0,2,4..."
+        return ",".join(combined.flatten().astype(str))
 
     def _init_tile_resources(self):
         terrain_values = {}
@@ -271,6 +327,18 @@ class Game:
         try:
             while not self.network.command_queue.empty():
                 message, addr = self.network.command_queue.get_nowait()
+
+                if message == "GET_MAP":
+                    print(f"[RESEAU] Demande de structure AR reçue de {addr}")
+                    map_str = self._get_ar_map_string()
+                    
+                    # IMPORTANT : Votre script Unity UDP_generationMap.cs écoute sur le port 5006.
+                    # Le message entrant 'addr' contient le port d'envoi (ex: 56789), 
+                    # il faut donc forcer le port de réponse à 5006.
+                    target_addr = (addr[0], 5006) 
+                    
+                    self.network.send_to(map_str, target_addr)
+                    continue 
 
                 if message == "READY":
                     print(f"[JEU] Mobile connecté depuis {addr}")
@@ -1029,18 +1097,203 @@ class Game:
             if self.retry_rect and self.retry_rect.collidepoint(mx, my): self.reset_game()
             elif self.quit_rect and self.quit_rect.collidepoint(mx, my): pygame.quit(); sys.exit()
             return
+
+        # IA
         if self.ai_btn_rect and self.ai_btn_rect.collidepoint(mx, my):
-            self.message = "IA Réfléchit..."
-            self.draw(); pygame.display.flip()
-            self.save_matrix_snapshot()
-            self.ai_engine.run_turn()
-            self._check_external_actions()
+            self.message = "IA (Deep Learning) calcule..."
+            # On force le dessin pour que le joueur voie le message
+            self.draw()
+            pygame.display.flip()
+            
+            # APPEL DE L'IA ENTRAÎNÉE
+            suggestion = self._consult_deep_learning()
+            
+            if suggestion:
+                val, b_key, sx, sy = suggestion
+                
+                self.ai_suggestion = {
+                    'x': sx, 
+                    'y': sy, 
+                    'building': b_key, 
+                    'action': val
+                }
+                self.ai_suggestion_end_time = pygame.time.get_ticks() + (cfg.AI_SUGGESTION_DURATION * 1000)
+                
+                type_act = "CONSTRUIRE" if val > 0 else "DÉTRUIRE"
+                nom_bat = BUILDING_RULES[b_key]['name']
+                self.message = f"IA Suggère : {type_act} {nom_bat}"
+                self.message_color = (0, 255, 255) if val > 0 else (255, 100, 100)
+            else:
+                self.message = "IA : Je ne vois rien à faire."
+                self.message_color = (200, 200, 200)
             return
+        
+
         # Vérification si le clic est dans la zone de la carte
         if 0 <= grid_mx < map_pixel_width and 0 <= grid_my < map_pixel_height:
             gx = grid_mx // cfg.TILE_SIZE
             gy = grid_my // cfg.TILE_SIZE
             self.place_building(gx, gy)
+
+    def _consult_deep_learning(self):
+        """
+        Synchronisation Totale + Instinct de Survie (Patch Anti-Écologiste)
+        """
+        if not self.ai_model:
+            print("IA non disponible.")
+            return None
+
+        # 1. Init Logique
+        try:
+            logic_game = TerrapolisGame()
+        except Exception as e:
+            print(f"Erreur init logique: {e}")
+            return None
+
+        # 2. Sync Ressources
+        logic_game.wood = float(self.resources["wood"])
+        logic_game.stone = float(self.resources["stones"])
+        logic_game.virtuosity = float(self.resources["virtuosity"])
+        
+        # 3. Sync Grille et Compteurs
+        logic_game.forest_mask = np.zeros((cfg.MAP_HEIGHT, cfg.MAP_WIDTH))
+        logic_game.mountain_mask = np.zeros((cfg.MAP_HEIGHT, cfg.MAP_WIDTH))
+        logic_game.plain_mask = np.zeros((cfg.MAP_HEIGHT, cfg.MAP_WIDTH))
+        logic_game.river_mask = np.zeros((cfg.MAP_HEIGHT, cfg.MAP_WIDTH))
+        logic_game.grid_types = logic_game.grid_types.astype(object)
+        
+        # Reset compteurs logiques
+        if hasattr(logic_game, 'buildings'):
+            for k in logic_game.buildings: logic_game.buildings[k] = 0
+
+        for y in range(cfg.MAP_HEIGHT):
+            for x in range(cfg.MAP_WIDTH):
+                terrain = self.map_data[y][x]
+                if terrain == "forest": logic_game.forest_mask[y, x] = 1.0
+                elif terrain == "mountain": logic_game.mountain_mask[y, x] = 1.0
+                elif terrain == "river": logic_game.river_mask[y, x] = 1.0
+                elif terrain == "plain": logic_game.plain_mask[y, x] = 1.0
+                
+                b_name = self.buildings_grid[y][x]
+                if b_name:
+                    logic_game.grid_types[y, x] = b_name
+                    logic_game.occupied_mask[y, x] = 1
+                    if hasattr(logic_game, 'buildings') and b_name in logic_game.buildings:
+                        logic_game.buildings[b_name] += 1
+
+        # 4. Actions Légales
+        actions = logic_game.get_legal_actions()
+        if not actions:
+            print("IA: Bloquée (0 actions).")
+            return None
+
+        # 5. Simulation Batch
+        batch_m = []
+        batch_r = []
+        for action in actions:
+            virtual_game = logic_game.copy()
+            virtual_game.step(action)
+            m, r = self.ai_model.encode_state(virtual_game)
+            batch_m.append(m)
+            batch_r.append(r)
+            
+        if not batch_m: return None
+
+        # 6. Prédiction (Scores bruts)
+        with torch.no_grad():
+            bm = torch.cat(batch_m).to(self.ai_device)
+            br = torch.cat(batch_r).to(self.ai_device)
+            values = self.ai_model(bm, br) # Tenseur des scores
+
+        # =========================================================================
+        # ### COUCHE D'INSTINCT DE SURVIE (ANTI-OSCILLATION) ###
+        # =========================================================================
+        
+        scores = values.flatten().tolist()
+        
+        current_wood = logic_game.wood
+        current_stone = logic_game.stone
+        
+        # --- PARTIE 1 : URGENCE CONSTRUCTION (Si on est à sec) ---
+        if current_wood < 50:
+            print(">>> IA INSTINCT : URGENCE CONSTRUCTION BOIS <<<")
+            for i, action in enumerate(actions):
+                a0 = action[0]
+                # Identification de l'action
+                is_sawmill_build = False
+                if len(action) >= 2:
+                    if (a0 == "BUILD" or a0 == "build") and action[1] == "sawmill": is_sawmill_build = True
+                    elif a0 == "sawmill": is_sawmill_build = True # Cas format court
+                
+                if is_sawmill_build: scores[i] += 50000.0 # Force la construction
+                if a0 == "WAIT": scores[i] -= 5000.0
+
+        if current_stone < 50:
+            print(">>> IA INSTINCT : URGENCE CONSTRUCTION PIERRE <<<")
+            for i, action in enumerate(actions):
+                a0 = action[0]
+                is_quarry_build = False
+                if len(action) >= 2:
+                    if (a0 == "BUILD" or a0 == "build") and action[1] == "quarry": is_quarry_build = True
+                    elif a0 == "quarry": is_quarry_build = True
+                
+                if is_quarry_build: scores[i] += 50000.0
+                if a0 == "WAIT": scores[i] -= 5000.0
+
+        # --- PARTIE 2 : PROTECTION (ANTI-DESTRUCTION PRÉCOCE) ---
+        # C'est ici qu'on empêche l'IA de détruire ce qu'elle vient de faire.
+        # On lui interdit de toucher aux usines tant qu'on n'a pas un stock CONFORTABLE (ex: 300)
+        
+        SAFE_STOCK = 300.0 
+
+        for i, action in enumerate(actions):
+            a0 = action[0]
+            
+            # Si l'IA veut DÉTRUIRE quelque chose...
+            if a0 == "DESTROY" or a0 == "destroy":
+                _, r, c = action
+                # On regarde quel bâtiment est visé sur la grille VISUELLE (engine)
+                # Attention: r=y, c=x pour l'accès grille
+                target_building = self.buildings_grid[r][c]
+                
+                # Protection de la Scierie
+                if target_building == "sawmill" and current_wood < SAFE_STOCK:
+                    # print(f"IA: Destruction Scierie Bloquée (Stock {current_wood} < {SAFE_STOCK})")
+                    scores[i] -= 1000000.0 # Interdiction absolue (Score - 1 million)
+
+                # Protection de la Carrière
+                if target_building == "quarry" and current_stone < SAFE_STOCK:
+                    # print(f"IA: Destruction Carrière Bloquée (Stock {current_stone} < {SAFE_STOCK})")
+                    scores[i] -= 1000000.0
+
+        # ========================================================================
+
+        # 7. Sélection (sur les scores modifiés par l'instinct)
+        best_idx = int(np.argmax(scores)) # On utilise numpy pour trouver le max dans la liste
+        best_action = actions[best_idx]
+        best_score = scores[best_idx]
+        
+        print(f"IA Décision Finale : {best_action} (Score: {best_score:.2f})")
+
+        # 8. Traduction (Votre version qui marchait)
+        p0 = best_action[0]
+        
+        if p0 == "WAIT":
+            return None
+        if p0 == "DESTROY" or p0 == "destroy":
+            _, r, c = best_action
+            b_name = self.buildings_grid[r][c]
+            if b_name: return (-1, b_name, c, r)
+            return None
+        if p0 == "BUILD" or p0 == "build":
+            _, b_name, r, c = best_action
+            return (1, b_name, c, r)
+        if len(best_action) == 3:
+            b_name, r, c = best_action
+            if b_name in BUILDING_RULES: return (1, b_name, c, r)
+
+        print(f"IA: Action non reconnue : {best_action}")
+        return None
 
     # --- NETWORK ---
 
