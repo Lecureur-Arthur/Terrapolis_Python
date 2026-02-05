@@ -1,0 +1,174 @@
+DeepLearning Terrapolis
+
+-> approche règles de bases et pas d'aide à l'entraînement = soit score négatif soit max 0 (car "wait") est le moins pire -> pas assez d'exploration
+
+
+
+Solution : Curriculum Learning (apprentissage par étapes)
+
+
+
+\- Phase 1 : ressources infinies + pollutions ignorées (apprentissage de la mécanique) + récompenses de construction pour inciter à construire --> 1500 épisodes
+
+\- Phase 2 : retour des pollutions -> ne va pas "wait" quand elle perd des points mais essayer de poser - de bâtiments problématiques --> 1500 épisodes
+
+\- Phase 3 : retour des ressources (0 au départ) -> 4000 épisodes 
+
+
+
+
+
+Hyperparamètres
+
+
+
+1er essai avec GAMMA = 0.98
+
+-> se souvenir des éléments du passé qui vont avoir de bonnes répercutions dans le futur
+
+-> accepter de construire au début pour au final gagner plus que ce que ça pollue (car pollution temporelle + construction et inondation)
+
+-> on retire ce modèle de pensée
+
+
+
+LR de 0.001 à 0.0001
+
+-> l'IA connaît désormais bien les stratégies de jeu, et donc si elle fait une erreur, au lieu de de faire un grand saut de correction, (passer à une autre stratégie)
+
+-> elle va faire des micro-ajustements, paufiner et améliorer son score
+
+
+
+--> ERREUR, ELLE DESAPPREND
+
+
+
+Batch\_size à 256
+
+-> moyennes plus large (elle essayera plus de choses diverses)
+
+
+
+-> au final ça déglinguait les épisodes
+
+-> j'ajoute la récupération du meilleur modèle
+
+
+
+
+
+Faire les 1000 tests aléatoires et 1000 tests IA
+
+
+
+Résultats :
+
+
+
+**RANDOM** (mais avec filtre des coups illégaux, cad que si le random propose un bâtiment qui ne peut pas être placé (ex : bâtiment sur l'eau, pas assez de ressources…) alors l'IA sautera le tour et au final aura 0 de score final à pratiquement toute les parties ou si elle attend de trouver la bonne action pour un tour alors ça va durer 1000 ans avant qu'elle fasse la bonne itération et que ce soit validé), donc on garde ce filtre :
+
+
+
+
+
+============================================================
+
+&nbsp;          RESULTATS FINAUX
+
+============================================================
+
+TOTAL EPISODES      : 1000
+
+------------------------------------------------------------
+
+SCORE MOYEN       : 12940
+
+MEILLEUR SCORE    : 54685
+
+PIRE SCORE        : -20174
+
+============================================================
+
+
+
+
+
+**IA (BEST\_MODEL) :**
+
+
+
+============================================================
+
+&nbsp;            BILAN DE L'ENTRAINEMENT
+
+============================================================
+
+TOTAL EPISODES      : 1000
+
+------------------------------------------------------------
+
+\[+] SCORES > 50 000   : 628 parties (62.80%)
+
+\[-] SCORES <= 50 000  : 372 parties (37.20%)
+
+------------------------------------------------------------
+
+SCORE MOYEN       : 61428
+
+MEILLEUR SCORE    : 165361
+
+PIRE SCORE        : -3639
+
+============================================================
+
+
+
+**-> L'IA est intelligente (4.75x meilleur en moyenne que le random)**
+
+**En moyenne, une partie jouée par l'IA vaut presque 5 parties jouées au hasard (+375%)**
+
+
+
+**-> le max de l'IA est 3x supérieur au max du random en moyenne**
+
+
+
+**-> le min de l'IA est bien moins désastreuse que le min random (l'IA est 5.5x plus sûre que le hasard) en moyenne.**
+
+
+
+**-> Conclusion : Une partie moyenne et banale de l'IA est meilleure que la meilleure partie possible du hasard.**
+
+
+
+Test purement aléatoire pour visualisation (mais inutile) :
+
+============================================================
+           R�SULTATS FINAUX (MODE AVEUGLE)
+============================================================
+TEMPS TOTAL       : 13.10 secondes
+------------------------------------------------------------
+SCORE MOYEN       : 0
+MEILLEUR SCORE    : 0
+PIRE SCORE        : 0
+------------------------------------------------------------
+COUPS VALIDES     : 0.11% (Chance de tomber juste)
+============================================================
+
+
+
+Train avec TensorBoard pour voir les évolutions (avec hyperparamètres et autres optimiser etc. -> visualisation)
+Diagramme du processus de CityCNN pour chaque episode (voir tableau)
+
+Entrée : 
+- Etat de la carte actuelle
+- Ressources
+
+Sortie :
+- Valeur estimée de l'action (le score que ça procure, une seule valeur)
+
+
+Nouvel entraînement avec Gamma (0.99) qui améliore le score moyen à la fin surtout
+
+Nouvel entraînement avec Dropout (30%) qui améliore le score moyen
