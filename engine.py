@@ -321,12 +321,44 @@ class Game:
                     if self.check_adjacency(x, y, "river", is_terrain=True):
                         count += 1
         return 1.0 + (count * 0.15)
+
+    def _get_ai_advice_text(self):
+        # On force le dessin pour que le joueur voie le message
+            self.draw()
+            pygame.display.flip()
+            
+            # APPEL DE L'IA ENTRAÎNÉE
+            suggestion = self._consult_deep_learning()
+            
+            if suggestion:
+                val, b_key, sx, sy = suggestion
+                
+                self.ai_suggestion = {
+                    'x': sx, 
+                    'y': sy, 
+                    'building': b_key, 
+                    'action': val
+                }
+                self.ai_suggestion_end_time = pygame.time.get_ticks() + (cfg.AI_SUGGESTION_DURATION * 1000)
+                
+                type_act = "CONSTRUIRE" if val > 0 else "DÉTRUIRE"
+                nom_bat = BUILDING_RULES[b_key]['name']
+                self.message = f"IA Suggère : {type_act} {nom_bat}"
+                self.message_color = (0, 255, 255) if val > 0 else (255, 100, 100)
+            else:
+                self.message = "IA : Je ne vois rien à faire."
+                self.message_color = (200, 200, 200)
+            return
     
     def _process_network_commands(self):
         """Lit la file d'attente du réseau et exécute les actions."""
         try:
             while not self.network.command_queue.empty():
                 message, addr = self.network.command_queue.get_nowait()
+
+                if message == "IA_TRIGGER":
+                    print("[ACTION] Le mobile demande conseil à l'IA")
+                    self.trigger_ai_suggestion()
 
                 if message == "GET_MAP":
                     print(f"[RESEAU] Demande de structure AR reçue de {addr}")
@@ -1084,6 +1116,38 @@ class Game:
                 tok = self.font.render("OK", True, (255,255,255))
                 self.screen.blit(tok, tok.get_rect(center=self.popup_rect_ok.center))
 
+    def trigger_ai_suggestion(self):
+        """Active la logique de suggestion IA (utilisé par le clic souris et le mobile)"""
+        print("[IA] Lancement de l'analyse...")
+        
+        self.message = "IA (Deep Learning) calcule..."
+        # On force le dessin pour que le joueur voie le message immédiatement
+        self.draw()
+        pygame.display.flip()
+        
+        # APPEL DE L'IA ENTRAÎNÉE
+        suggestion = self._consult_deep_learning()
+        
+        if suggestion:
+            val, b_key, sx, sy = suggestion
+            
+            self.ai_suggestion = {
+                'x': sx, 
+                'y': sy, 
+                'building': b_key, 
+                'action': val
+            }
+            # Active l'affichage de la suggestion pendant X secondes
+            self.ai_suggestion_end_time = pygame.time.get_ticks() + (cfg.AI_SUGGESTION_DURATION * 1000)
+            
+            type_act = "CONSTRUIRE" if val > 0 else "DÉTRUIRE"
+            nom_bat = BUILDING_RULES[b_key]['name']
+            self.message = f"IA Suggère : {type_act} {nom_bat}"
+            self.message_color = (0, 255, 255) if val > 0 else (255, 100, 100)
+        else:
+            self.message = "IA : Je ne vois rien à faire."
+            self.message_color = (200, 200, 200)
+
     def _handle_click(self, pos):
         mx, my = pos
         # CORRECTION SOURIS : On décale les coordonnées pour tenir compte de la bande AR
@@ -1108,32 +1172,7 @@ class Game:
 
         # IA
         if self.ai_btn_rect and self.ai_btn_rect.collidepoint(mx, my):
-            self.message = "IA (Deep Learning) calcule..."
-            # On force le dessin pour que le joueur voie le message
-            self.draw()
-            pygame.display.flip()
-            
-            # APPEL DE L'IA ENTRAÎNÉE
-            suggestion = self._consult_deep_learning()
-            
-            if suggestion:
-                val, b_key, sx, sy = suggestion
-                
-                self.ai_suggestion = {
-                    'x': sx, 
-                    'y': sy, 
-                    'building': b_key, 
-                    'action': val
-                }
-                self.ai_suggestion_end_time = pygame.time.get_ticks() + (cfg.AI_SUGGESTION_DURATION * 1000)
-                
-                type_act = "CONSTRUIRE" if val > 0 else "DÉTRUIRE"
-                nom_bat = BUILDING_RULES[b_key]['name']
-                self.message = f"IA Suggère : {type_act} {nom_bat}"
-                self.message_color = (0, 255, 255) if val > 0 else (255, 100, 100)
-            else:
-                self.message = "IA : Je ne vois rien à faire."
-                self.message_color = (200, 200, 200)
+            self.trigger_ai_suggestion()  # <--- Appel propre
             return
         
 
