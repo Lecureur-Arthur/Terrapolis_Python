@@ -351,7 +351,15 @@ class Game:
                     if len(parts) == 3:
                         idx = int(parts[1])
                         b_id = int(parts[2])
-                        self._handle_mobile_build(idx, b_id, addr)
+                        self._handle_mobile_build(idx, b_id, addr, 1)
+
+                if message.startswith("AR"):
+                    # Format : BUILD,index,typeID
+                    parts = message.split(",")
+                    if len(parts) == 3:
+                        idx = int(parts[1])
+                        b_id = int(parts[2])
+                        self._handle_mobile_build(idx, b_id, addr, 0)
 
                 if message.startswith("DESTROY"):
                     try:
@@ -1334,7 +1342,7 @@ class Game:
         map_data = self._get_game_state_string()
         self.network.send_to(map_data, addr)
 
-    def _handle_mobile_build(self, tile_index, building_id, addr):
+    def _handle_mobile_build(self, tile_index, building_id, addr, typeEnvoie):
         """Reçoit un index Mobile, convertit et construit (Correction Coordonnées)."""
         # 1. Coordonnées MOBILE (Grille 10 colonnes)
         u_row = tile_index // 10
@@ -1383,7 +1391,17 @@ class Game:
             print(f"[SUCCÈS] Bâtiment {building_name} placé en ({py_col},{py_row})")
             
             self.network.send_to("RESULT,OK", addr)
-            self._send_map_to_mobile(addr) 
+            if typeEnvoie == 1:
+                self._send_map_to_mobile(addr) 
+            else :
+                map_str = self._get_ar_map_string(addr)
+                    
+                # IMPORTANT : Votre script Unity UDP_generationMap.cs écoute sur le port 5006.
+                # Le message entrant 'addr' contient le port d'envoi (ex: 56789), 
+                # il faut donc forcer le port de réponse à 5006.
+                target_addr = (addr[0], 5006) 
+                
+                self.network.send_to(map_str, target_addr)
         else:
             print(f"[ECHEC] Pas assez de ressources ou terrain invalide")
             self.network.send_to("RESULT,ERROR", addr)
