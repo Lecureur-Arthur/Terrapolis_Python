@@ -1,8 +1,8 @@
 # Terrapolis - Moteur de Simulation & IA
 
-**Terrapolis** est un moteur de simulation de gestion urbaine et de ressources développé en Python. Conçu comme une architecture modulaire, il combine une boucle de rendu temps réel (Pygame), une couche réseau UDP et des modules d'Intelligence Artificielle hybrides (CNN + Heuristiques).
+**Terrapolis** est un moteur de simulation de gestion urbaine et de ressources développé en Python. Conçu comme une architecture modulaire, il combine une interface qui s'actualise en temps réel (Pygame), une couche réseau UDP et des modules d'Intelligence Artificielle hybrides (CNN + Heuristiques).
 
-Ce dépôt contient le code source du moteur ("Back-end logic"), les assets graphiques 2D, ainsi que les modèles d'IA pré-entraînés.
+Ce dépôt contient le code source du moteur ("Back-end logic"), les assets graphiques 2D, ainsi que le modèle d'IA entraîné.
 
 ## Écosystème & Client Mobile
 
@@ -55,9 +55,14 @@ La logique métier est découplée du rendu.
     * Gère la grille (Grid System) et la matrice d'état.
     * Calcule les métriques en temps réel : Pollution, Score de Virtuosité, Production.
     * Gère les événements stochastiques (inondations, catastrophes).
-
+ 
+* **`terrapolis_model.py`** : Contient le modèle d'entraînement CNN.
+* Utilise des convolutions manuelles pour générer des "Heatmaps" d'attractivité.
+* Détermine les meilleurs emplacements de construction basés sur les règles de voisinage immédiat.
 
 * **`terrain_data.py`** : Base de données topographique statique (Numpy) définissant les biomes.
+
+* **`terrapolis_visu.py`** : Visualisation d'une partie (commande : python.exe terrapolis_visu.py)
 
 ### 4. Système Data-Driven
 
@@ -76,20 +81,14 @@ Le projet utilise une approche hybride pour l'aide à la décision (conseil au j
 ### Architecture des Modèles
 
 * **`terrapolis_models.py` (PyTorch)** :
-    * Définit l'architecture **CityCNN**.
+    * Définit l'architecture **CityCNN** (modèle CNN transformé).
     * Traite la grille de jeu comme une image multi-canaux (Terrain, Bâtiments, Pollution).
-    * Utilisé pour l'apprentissage par renforcement (RL) et l'évaluation globale de la ville.
-
-
-* **`map.py` (Analyse Heuristique)** :
-    * Utilise des convolutions manuelles pour générer des "Heatmaps" d'attractivité.
-    * Détermine les meilleurs emplacements de construction basés sur les règles de voisinage immédiat.
-
+    * Utilisé pour l'apprentissage par renforcement (Deep Reinforcement Learning) et l'évaluation globale de la ville.
 
 
 ### Agents
 
-* **`IA_Dumb.py`** : Agent de base (Baseline) effectuant des actions aléatoires ou scriptées. Sert aux tests de robustesse et de charge du réseau UDP.
+* **`IA_Dumb.py`** : Agent de base (Baseline) effectuant des actions aléatoires ou scriptées. Sert aux tests de robustesse (preuve d'intelligence du modèle CityCNN) et de charge du réseau UDP.
 
 ---
 
