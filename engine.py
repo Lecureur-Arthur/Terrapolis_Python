@@ -566,29 +566,41 @@ class Game:
 
     # --- ACTIONS ---
 
+    # --- ACTIONS ---
+
     def place_building(self, x, y):
+        # On garde les vérifications de base
         if self.game_over or self.popup_active or not self.selected_building: return
+
+        # Logique de destruction (inchangée)
         if self.selected_building == "demolish":
             if self.buildings_grid[y][x]:
                 self.execute_action(x, y, self.buildings_grid[y][x], -1, is_flood=False)
             else:
                 self.message = "Rien à détruire ici."
             return
+
+        # Vérification si la case est occupée (inchangée)
         if self.buildings_grid[y][x]:
             self.trigger_popup("error", "IMPOSSIBLE", "Cet emplacement est déjà occupé.")
             return
+
+        # Vérification si le terrain est inondé (inchangée)
         if self.flooded_grid[y][x]:
             self.trigger_popup("error", "IMPOSSIBLE", "Terrain inondé ou boueux.")
             return
+
+        # Vérification des règles de construction (voisins, terrain interdit...)
         rules = BUILDING_RULES.get(self.selected_building)
         if not self._check_building_constraints(x, y, rules): return
+
+        # Vérification du coût en ressources
         if not self._check_resources_cost(rules): return
-        viability = random.randint(0, 100)
-        warning = self._get_pollution_warning(x, y)
-        msg = f"VIABILITÉ DU SITE : {viability}%\n"
-        if warning: msg += f"\n--- ATTENTION ---\n{warning}\n"
-        msg += "\nConfirmer la construction ?"
-        self.trigger_popup("confirm", "ANALYSE DU TERRAIN", msg, {"x": x, "y": y, "building": self.selected_building})
+
+        # --- MODIFICATION ---
+        # Au lieu de calculer la viabilité et d'ouvrir un pop-up,
+        # on lance directement l'action de construction (type 1).
+        self.execute_action(x, y, self.selected_building, 1)
 
     def _check_building_constraints(self, x, y, rules):
         terrain = self.map_data[y][x]

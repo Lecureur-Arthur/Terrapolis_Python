@@ -1,0 +1,18 @@
+=== RAPPORT DE FIN DE PARTIE - TERRAPOLIS ===
+Date : 07/02/2026 09:04:17
+
+SCORE FINAL : 634
+---------------------------------------
+Virtuosité      : 1228
+Pollution Totale: 594
+  > Construction: 200
+  > Durée       : 394
+  > Inondation  : 0
+
+BÂTIMENTS (Construits / Détruits):
+- Scierie            : 1 / 0
+- Carrière           : 0 / 0
+- Usine à charbon    : 0 / 0
+- Éolienne           : 0 / 0
+- Centrale nucléaire : 0 / 0
+- Habitations        : 0 / 0
