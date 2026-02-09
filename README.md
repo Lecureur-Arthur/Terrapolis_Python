@@ -14,7 +14,7 @@ Ce projet fonctionne en architecture **Client-Serveur**.
 L'application mobile se connecte à ce moteur via UDP pour envoyer les commandes de l'utilisateur et recevoir l'état de la ville en temps réel.
 
 > **Accéder au dépôt Client Mobile (Unity) :**
-> [ **Lien vers le repo Terrapolis Mobile** ]
+> [ **[Lien vers le repo Terrapolis Unity Mobile](https://github.com/Lecureur-Arthur/Terrapolis_Unity)** ]
  
 ---
 
